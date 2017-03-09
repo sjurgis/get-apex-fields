@@ -1,0 +1,103 @@
+<body style="max-width: 640px"><h1>Get class fields bookmarklet</h1>
+
+<h3>Usage</h3>
+Drag <a href='
+javascript:(function(){
+function note (str, isError){
+  if(Notification){
+    Notification.requestPermission(function() {
+      var notification = new Notification(str)
+    });
+  } else {
+    alert(str);
+  }
+}
+var classid = window.location.pathname.replace("/","");
+var pre = classid.substr(0,3);
+if ( pre !== "01p" &&  pre !== "01q" && pre !== "066" && pre !== "099" ){
+  note("Please open class, trigger, page or component.");
+  return;
+}
+var names = {};
+var sid = new RegExp("sid=([^;]+)").exec(document.cookie)[1];
+var i = 0;
+var j = 0;
+function getName(id){
+  var myHeaders = new Headers();
+  myHeaders.append("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+  myHeaders.append("Accept", "application/json");
+  myHeaders.append("Authorization", "OAuth " + sid);
+  var myInit = {
+    method: "GET",
+    headers: myHeaders,
+    credentials: "include"
+  };
+  var myRequest = new Request("/services/data/v39.0/tooling/query/?q=select+fullName+from+customfield+where+id&#061;%27"+id+"%27", myInit);
+
+  fetch(myRequest).then(response => {
+      return response.text();
+    }).then(r => {
+      var fn = JSON.parse(r).records[0].FullName;
+      var n = fn.split(".");
+      if(names[n[0]]){
+        names[n[0]].push( n[1] );  
+      } else {
+        names[n[0]]=[n[1]];
+      }
+      
+      i++;
+      if(i === j) {
+        note("Complete. Check console for results.");
+        console.log(names);
+      }  
+    });
+  };
+var myHeaders = new Headers();
+myHeaders.append("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+myHeaders.append("Accept", "application/json");
+
+var myInit = {
+  method: "POST",
+  headers: myHeaders,
+  credentials: "include",
+  body: "action=RELATED&extent=CODE&relatedEntityEnumOrId="+classid
+};
+var myRequest = new Request("/_ui/common/apex/debug/ApexCSIAPI", myInit);
+
+fetch(myRequest)
+  .then(response => {
+    return response.text();
+  })
+  .then(r => dep(r));
+  
+function dep(r) {
+  var res = JSON.parse(r.replace("while(1);", ""));
+  var ids = [];
+  res.relatedInstances.relatedInstances.map( i => {
+    if(i.extent ==="CustomFieldDefinition")
+      ids.push(i.id);
+  });
+  j = ids.length;
+  if (j>0){
+    note("Got " + j + " fields. Getting names...");
+    ids.map(i=>getName(i));
+  } else {
+    note("Haven\"t got any fields. Exiting...");
+  }
+  
+}
+
+})()%3B'
+>Get Fields</a> into bookmark bar and navigate to any Apex class, Trigger, or Visualforce page/component.<br>
+<img src='img.png' width='320px'/>
+
+
+
+<h3>Motivation</h3>
+I wanted something to list all the new fields for the class I have added to my helper also to add to a SOQL query. Parsing with <b>sed</b> is an option, but why not use what Salesforce already gives you? By applying <b>.join(",\n")</b> you can copy/paste directly into your code.
+
+
+
+<h3>How it works</h3>
+It gets class name by sniffing the URL. Then it is using <b>undocumented</b> Developer Console API to list all dependencies. Then another metadata API requests fullName from customField object. Salesforce only allows to query one record when querying fullName field.
+</body>
